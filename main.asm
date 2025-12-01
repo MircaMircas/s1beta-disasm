@@ -16,6 +16,10 @@ FixBugs	= 0
 ;	| If 1, fixes a handful of bugs in the game
 zeroOffsetOptimization = 0
 ;	| If 1, makes a handful of zero-offset instructions smaller
+ImproveHeader = 0
+;	| If 1, improves the header
+EnablePAL = 0
+;	| If 1, changes and improves the code to run on PAL.
 
 		include "MacroSetup.asm"
 		include "Constants.asm"
@@ -91,8 +95,13 @@ Vectors:
 		dc.l ErrorTrap			; Unused (reserved)
 		dc.b "SEGA MEGA DRIVE "			; Hardware system ID (Console name)
 		dc.b "(C)SEGA 1989.JAN"			; Copyright holder and release date (generally year)
+	if CustomHeader
+		dc.b "SONIC THE               HEDGEHOG                " ; Domestic name (blank)
+		dc.b "SONIC THE               HEDGEHOG                " ; International name (blank)
+	else
 		dc.b "                                                " ; Domestic name (blank)
 		dc.b "                                                " ; International name (blank)
+	endif
 		dc.b "GM 00000000-00"			; Serial\version number
 Checksum:	dc.w 0					; Checksum
 		dc.b "J               "			; I\O support
@@ -104,7 +113,11 @@ RamEndLoc:		dc.l (v_end-1)&$FFFFFF			; End address of RAM
 		dc.l $20202020				; SRAM start ($200001)
 		dc.l $20202020				; SRAM end ($20xxxx)
 Notes:	dc.b "                                                    " ; Notes (unused, anything can be put in this space, but it has to be 52 bytes.)
+	if CustomHeader
+		dc.b "JUE             "			; Region (Country code)
+	else
 		dc.b "JU              "			; Region (Country code)
+	endif
 EndOfHeader:
 
 ; ===========================================================================
