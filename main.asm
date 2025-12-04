@@ -295,7 +295,7 @@ CheckSumCheck:
 		bhs.s	.loop
 		movea.l	#Checksum,a1	; read the checksum
 		cmp.w	(a1),d1		; compare checksum in header to ROM
-	if 0
+	if ImproveHeader
 		bne.w	CheckSumError	; if they don't match, branch
 	else
 		nop	; removed the branch to the checksum error, so the checksum will not throw an error regardless of the value
