@@ -5835,7 +5835,7 @@ ObjPos_SLZ3:	binclude "level/objpos/slz3.bin"
 ObjPos_SZ1:	binclude "level/objpos/sz1.bin"
 ObjPos_SZ2:	binclude "level/objpos/sz2.bin"
 ;0x729CA
-		binclude "leftovers/level/objpos/sz1.bin"
+LO_ObjPos_SZ1:		binclude "leftovers/level/objpos/sz1.bin"
 ObjPos_SZ3:	binclude "level/objpos/sz3.bin"
 ObjPos_CWZ1:	binclude "level/objpos/cwz1.bin"
 ObjPos_CWZ2:	binclude "level/objpos/cwz2.bin"
