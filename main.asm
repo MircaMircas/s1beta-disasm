@@ -95,7 +95,7 @@ Vectors:
 		dc.l ErrorTrap			; Unused (reserved)
 		dc.b "SEGA MEGA DRIVE "			; Hardware system ID (Console name)
 		dc.b "(C)SEGA 1989.JAN"			; Copyright holder and release date (generally year)
-	if CustomHeader
+	if ImproveHeader
 		dc.b "SONIC THE               HEDGEHOG                " ; Domestic name (blank)
 		dc.b "SONIC THE               HEDGEHOG                " ; International name (blank)
 	else
@@ -113,7 +113,7 @@ RamEndLoc:		dc.l (v_end-1)&$FFFFFF			; End address of RAM
 		dc.l $20202020				; SRAM start ($200001)
 		dc.l $20202020				; SRAM end ($20xxxx)
 Notes:	dc.b "                                                    " ; Notes (unused, anything can be put in this space, but it has to be 52 bytes.)
-	if CustomHeader
+	if EnablePAL
 		dc.b "JUE             "			; Region (Country code)
 	else
 		dc.b "JU              "			; Region (Country code)
