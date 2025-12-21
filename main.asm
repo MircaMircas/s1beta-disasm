@@ -305,9 +305,9 @@ CheckSumCheck:
 		moveq	#0,d7
 		move.w	#bytesToLcnt(v_end-v_crossresetram),d6
 
-.clearRAM:
+.clrRAM:
 		move.l	d7,(a6)+
-		dbf	d6,.clearRAM
+		dbf	d6,.clrRAM
 		move.b	(region_ver).l,d0
 		andi.b	#%11000000,d0		; AND the value so it only gets the japanese bit and clock speed bit
 		move.b	d0,(v_megadrive).w	; move the region values into 68K memory for later use
@@ -599,7 +599,7 @@ VInt_02:
 VInt_04:
 		bsr.w	VInt_Generic
 		bsr.w	LoadTilesAsYouMove_BGOnly
-		bsr.w	ProcessDPLC2
+		bsr.w	ProcessDPLC
 		tst.w	(v_generictimer).w
 		beq.w	.end
 		subq.w	#1,(v_generictimer).w
@@ -637,7 +637,7 @@ VInt_08:
 		bsr.w	LoadTilesAsYouMove
 		jsr	(AnimateLevelGfx).l
 		jsr	(UpdateHUD).l
-		bsr.w	loc_1454
+		bsr.w	ProcessDPLC2
 		moveq	#0,d0
 		move.b	(v_lvlcount).w,d0
 		move.b	(v_lvlcount2).w,d1
@@ -695,7 +695,7 @@ VInt_0C:
 		bsr.w	LoadTilesAsYouMove
 		jsr	(AnimateLevelGfx).l
 		jsr	(UpdateHUD).l
-		bsr.w	ProcessDPLC2
+		bsr.w	ProcessDPLC
 		rts
 ; ---------------------------------------------------------------------------
 
@@ -710,7 +710,7 @@ VInt_0E:
 
 VInt_12:
 		bsr.w	VInt_Generic
-		bra.w	ProcessDPLC2
+		bra.w	ProcessDPLC
 ; ---------------------------------------------------------------------------
 
 VInt_Generic:
@@ -808,18 +808,18 @@ VDPSetupGame:
 		lea	(VDPSetupArray).l,a2
 		moveq	#bytesToWcnt(VDPSetupArray_End-VDPSetupArray),d7
 
-loc_101E:
+.setreg:
 		move.w	(a2)+,(a0)
-		dbf	d7,loc_101E
+		dbf	d7,.setreg
 		move.w	(VDPSetupArray+2).l,d0
 		move.w	d0,(v_vdp_buffer1).w
 		moveq	#0,d0
 		move.l	#$C0000000,(vdp_control_port).l
 		move.w	#bytesToWcnt(v_palette_end-v_palette),d7
 
-loc_103E:
+.clrCRAM:
 		move.w	d0,(a1)
-		dbf	d7,loc_103E
+		dbf	d7,.clrCRAM
 		clr.l	(v_scrposy_dup).w
 		clr.l	(v_scrposx_dup).w
 		move.l	d1,-(sp)
@@ -876,9 +876,9 @@ DACDriverLoad:
 		lea	(z80_ram).l,a1
 		move.w	#DACDriver_End-DACDriver-1,d0
 
-.loop:
+.loadDAC:
 		move.b	(a0)+,(a1)+
-		dbf	d0,.loop
+		dbf	d0,.loadDAC
 		moveq	#0,d0
 		lea	(z80_dac_voicetbladr).l,a1
 		move.b	d0,(a1)+	; Write 0 to 1FF8
@@ -927,52 +927,75 @@ QueueSound3:
 ; ---------------------------------------------------------------------------
 		include "_include/PauseGame.asm"
 ; ---------------------------------------------------------------------------
+; Subroutine to copy a tile map from RAM to VRAM namespace
+
+; input:
+;	a1 = tile map address
+;	d0 = VRAM address
+;	d1 = width (cells)
+;	d2 = height (cells)
+; ---------------------------------------------------------------------------
+
+; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
+
 
 TilemapToVRAM:
 		lea	(vdp_data_port).l,a6
 		move.l	#$800000,d4
 
-loc_1222:
-		move.l	d0,4(a6)
+Tilemap_Line:
+		move.l	d0,4(a6)	; move d0 to VDP_control_port
 		move.w	d1,d3
 
-loc_1228:
-		move.w	(a1)+,(a6)
-		dbf	d3,loc_1228
-		add.l	d4,d0
-		dbf	d2,loc_1222
+Tilemap_Cell:
+		move.w	(a1)+,(a6)	; write value to namespace
+		dbf	d3,Tilemap_Cell	; next tile
+		add.l	d4,d0		; goto next line
+		dbf	d2,Tilemap_Line	; next line
 		rts
+; End of function TilemapToVRAM
+
 ; ---------------------------------------------------------------------------
 		include "_include/Nemesis Decompression.asm"
 ; ---------------------------------------------------------------------------
+; Subroutine to load pattern load cues (aka to queue pattern load requests)
+; ---------------------------------------------------------------------------
 
+; ARGUMENTS
+; d0 = index of PLC list
+; ---------------------------------------------------------------------------
+
+; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
+
+; LoadPLC:
 AddPLC:
 		movem.l	a1-a2,-(sp)
 		lea	(ArtLoadCues).l,a1
 		add.w	d0,d0
 		move.w	(a1,d0.w),d0
-		lea	(a1,d0.w),a1
-		lea	(v_plc_buffer).w,a2
+		lea	(a1,d0.w),a1		; jump to relevant PLC
+		lea	(v_plc_buffer).w,a2 ; PLC buffer space
 
-loc_138E:
-		tst.l	(a2)
-		beq.s	loc_1396
-		addq.w	#6,a2
-		bra.s	loc_138E
-; ---------------------------------------------------------------------------
+.findspace:
+		tst.l	(a2)		; is space available in RAM?
+		beq.s	.copytoRAM	; if yes, branch
+		addq.w	#6,a2		; if not, try next space
+		bra.s	.findspace
+; ===========================================================================
 
-loc_1396:
-		move.w	(a1)+,d0
-		bmi.s	loc_13A2
+.copytoRAM:
+		move.w	(a1)+,d0	; get length of PLC
+		bmi.s	.skip
 
-loc_139A:
+.loop:
 		move.l	(a1)+,(a2)+
-		move.w	(a1)+,(a2)+
-		dbf	d0,loc_139A
+		move.w	(a1)+,(a2)+	; copy PLC to RAM
+		dbf	d0,.loop	; repeat for length of PLC
 
-loc_13A2:
-		movem.l	(sp)+,a1-a2
+.skip:
+		movem.l	(sp)+,a1-a2 ; a1=object
 		rts
+; End of function AddPLC
 
 ; ||||||||||||||| S U B	R O U T	I N E |||||||||||||||||||||||||||||||||||||||
 ; Queue pattern load requests, but clear the PLQ first
@@ -1027,11 +1050,17 @@ ClearPLC:
 		rts
 ; End of function ClearPLC
 
+; ---------------------------------------------------------------------------
+; Subroutine to use graphics listed in a pattern load cue
+; ---------------------------------------------------------------------------
+
+; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
+
 RunPLC:
 		tst.l	(v_plc_buffer).w
-		beq.s	locret_1436
+		beq.s	Rplc_Exit
 		tst.w	(v_plc_patternsleft).w
-		bne.s	locret_1436
+		bne.s	Rplc_Exit
 		movea.l	(v_plc_buffer).w,a0
 		lea	(NemPCD_WriteRowToVDP).l,a3
 		lea	(v_ngfx_buffer).w,a1
@@ -1061,11 +1090,11 @@ loc_1404:
 		move.w	d2,(v_plc_patternsleft).w
 	endif
 
-locret_1436:
+Rplc_Exit:
 		rts
 ; ---------------------------------------------------------------------------
 
-ProcessDPLC2:
+ProcessDPLC:
 		tst.w	(v_plc_patternsleft).w
 		beq.w	locret_14D0
 		move.w	#9,(v_plc_framepatternsleft).w
@@ -1075,7 +1104,7 @@ ProcessDPLC2:
 		bra.s	loc_146C
 ; ---------------------------------------------------------------------------
 
-loc_1454:
+ProcessDPLC2:
 		tst.w	(v_plc_patternsleft).w
 		beq.s	locret_14D0
 		move.w	#3,(v_plc_framepatternsleft).w
@@ -1178,33 +1207,37 @@ Cyc_SLZ:	binclude "palette/Cycle - SLZ.bin"
 Cyc_SZ1:	binclude "palette/Cycle - SZ1.bin"
 Cyc_SZ2:	binclude "palette/Cycle - SZ2.bin"
 ; ---------------------------------------------------------------------------
+; Subroutine to fade in from black
+; ---------------------------------------------------------------------------
+
+; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
 
 PaletteWhiteIn:
-		move.w	#$3F,(v_pfade_start).w
+		move.w	#$3F,(v_pfade_start).w ; set start position = 0; size = $40
 
-PaletteWhiteIn_Sub:
+PalFadeIn_Alt:
 		moveq	#0,d0
 		lea	(v_palette).w,a0
 		move.b	(v_pfade_start).w,d0
 		adda.w	d0,a0
-		moveq	#0,d1
+		moveq	#cBlack,d1
 		move.b	(v_pfade_size).w,d0
 
-loc_1968:
+.fill:				; start position and size are already set
 		move.w	d1,(a0)+
-		dbf	d0,loc_1968
+		dbf	d0,.fill 	; fill palette with black
 		move.w	#$15-1,d4
 
-loc_1972:
+.mainloop:
 		move.b	#id_VInt_12,(v_vint_routine).w
 		bsr.w	WaitForVInt
-		bsr.s	sub_1988
+		bsr.s	FadeIn_FromBlack
 		bsr.w	RunPLC
-		dbf	d4,loc_1972
+		dbf	d4,.mainloop
 		rts
 ; ---------------------------------------------------------------------------
 
-sub_1988:
+FadeIn_FromBlack:
 		moveq	#0,d0
 		lea	(v_palette).w,a0
 		lea	(v_palette_fading).w,a1
@@ -1213,54 +1246,56 @@ sub_1988:
 		adda.w	d0,a1
 		move.b	(v_pfade_size).w,d0
 
-loc_199E:
-		bsr.s	sub_19A6
-		dbf	d0,loc_199E
+.addcolour:
+		bsr.s	FadeIn_AddColour
+		dbf	d0,.addcolour
 		rts
 ; ---------------------------------------------------------------------------
 
-sub_19A6:
+FadeIn_AddColour:
+.addblue:
 		move.w	(a1)+,d2
 		move.w	(a0),d3
-		cmp.w	d2,d3
-		beq.s	loc_19CE
+		cmp.w	d2,d3		; is colour already at threshold level?
+		beq.s	.next		; if yes, branch
 		move.w	d3,d1
-		addi.w	#$200,d1
-		cmp.w	d2,d1
-		bhi.s	loc_19BC
-		move.w	d1,(a0)+
+		addi.w	#$200,d1	; increase blue value
+		cmp.w	d2,d1		; has blue reached threshold level?
+		bhi.s	.addgreen	; if yes, branch
+		move.w	d1,(a0)+	; update palette
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_19BC:
+.addgreen:
 		move.w	d3,d1
-		addi.w	#$20,d1
+		addi.w	#$20,d1		; increase green value
 		cmp.w	d2,d1
-		bhi.s	loc_19CA
-		move.w	d1,(a0)+
+		bhi.s	.addred
+		move.w	d1,(a0)+	; update palette
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_19CA:
-		addq.w	#2,(a0)+
+.addred:
+		addq.w	#2,(a0)+	; increase red value
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_19CE:
-		addq.w	#2,a0
+.next:
+		addq.w	#2,a0		; next colour
 		rts
+; End of function FadeIn_AddColour
 ; ---------------------------------------------------------------------------
 
 PaletteFadeOut:
 		move.w	#$3F,(v_pfade_start).w
 		move.w	#$15-1,d4
 
-loc_19DC:
+.mainloop:
 		move.b	#id_VInt_12,(v_vint_routine).w
 		bsr.w	WaitForVInt
 		bsr.s	FadeOut_ToBlack
 		bsr.w	RunPLC
-		dbf	d4,loc_19DC
+		dbf	d4,.mainloop
 		rts
 ; ---------------------------------------------------------------------------
 
@@ -1271,41 +1306,43 @@ FadeOut_ToBlack:
 		adda.w	d0,a0
 		move.b	(v_pfade_size).w,d0
 
-loc_1A02:
-		bsr.s	sub_1A0A
-		dbf	d0,loc_1A02
+.decolour:
+		bsr.s	FadeOut_DecColour ; decrease colour
+		dbf	d0,.decolour
 		rts
 ; ---------------------------------------------------------------------------
 
-sub_1A0A:
+FadeOut_DecColour:
+.dered:
 		move.w	(a0),d2
-		beq.s	loc_1A36
+		beq.s	.next
 		move.w	d2,d1
 		andi.w	#$E,d1
-		beq.s	loc_1A1A
-		subq.w	#2,(a0)+
+		beq.s	.degreen
+		subq.w	#2,(a0)+	; decrease red value
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_1A1A:
+.degreen:
 		move.w	d2,d1
 		andi.w	#$E0,d1
-		beq.s	loc_1A28
-		subi.w	#$20,(a0)+
+		beq.s	.deblue
+		subi.w	#$20,(a0)+	; decrease green value
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_1A28:
+.deblue:
 		move.w	d2,d1
 		andi.w	#$E00,d1
-		beq.s	loc_1A36
-		subi.w	#$200,(a0)+
+		beq.s	.next
+		subi.w	#$200,(a0)+	; decrease blue value
 		rts
-; ---------------------------------------------------------------------------
+; ===========================================================================
 
-loc_1A36:
+.next:
 		addq.w	#2,a0
 		rts
+; End of function FadeOut_DecColour
 ; ---------------------------------------------------------------------------
 
 PalCycSega:
@@ -1667,7 +1704,7 @@ loc_2732:
 LevelSelect:
 		move.b	#id_VInt_04,(v_vint_routine).w
 		bsr.w	WaitForVInt
-		bsr.w	sub_28A6
+		bsr.w	LevSelControls
 		bsr.w	RunPLC
 		tst.l	(v_plc_buffer).w
 		bne.s	LevelSelect
@@ -1812,66 +1849,70 @@ DemoLevels:
 		dc.b	id_SZ,0
 		dc.b	(id_SS-1),0
 ; ---------------------------------------------------------------------------
+; Subroutine to change what you're selecting in the level select
+; ---------------------------------------------------------------------------
 
-sub_28A6:
+; ||||||||||||||| S U B R O U T I N E |||||||||||||||||||||||||||||||||||||||
+
+LevSelControls:
 		move.b	(v_jpadpress1).w,d1
 		andi.b	#btnUp+btnDn,d1
-		bne.s	loc_28B6
+		bne.s	LevSel_UpDown
 		subq.w	#1,(v_levseldelay).w
-		bpl.s	loc_28F0
+		bpl.s	LevSel_SndTest
 
-loc_28B6:
+LevSel_UpDown:
 		move.w	#12-1,(v_levseldelay).w
 		move.b	(v_jpadhold1).w,d1
 		andi.b	#btnUp+btnDn,d1
-		beq.s	loc_28F0
+		beq.s	LevSel_SndTest
 		move.w	(v_levselitem).w,d0
 		btst	#bitUp,d1
-		beq.s	loc_28D6
+		beq.s	LevSel_Down
 		subq.w	#1,d0
-		bhs.s	loc_28D6
+		bhs.s	LevSel_Down
 		moveq	#$13,d0
 
-loc_28D6:
+LevSel_Down:
 		btst	#bitDn,d1
-		beq.s	loc_28E6
+		beq.s	LevSel_Refresh
 		addq.w	#1,d0
 		cmpi.w	#$14,d0
-		blo.s	loc_28E6
+		blo.s	LevSel_Refresh
 		moveq	#0,d0
 
-loc_28E6:
+LevSel_Refresh:
 		move.w	d0,(v_levselitem).w
 		bsr.w	LevSelTextLoad
 		rts
 ; ---------------------------------------------------------------------------
 
-loc_28F0:
+LevSel_SndTest:
 		cmpi.w	#$13,(v_levselitem).w
-		bne.s	locret_292A
+		bne.s	LevSel_NoMove
 		move.b	(v_jpadpress1).w,d1
 		andi.b	#btnL+btnR,d1
-		beq.s	locret_292A
+		beq.s	LevSel_NoMove
 		move.w	(v_levselsound).w,d0
 		btst	#bitL,d1
-		beq.s	loc_2912
+		beq.s	LevSel_Right
 		subq.w	#1,d0
-		bhs.s	loc_2912
+		bhs.s	LevSel_Right
 		moveq	#sfx__Last-$80,d0
 
-loc_2912:
+LevSel_Right:
 		btst	#bitR,d1
-		beq.s	loc_2922
+		beq.s	LevSel_Refresh2
 		addq.w	#1,d0
 		cmpi.w	#spec__First-$80,d0
-		blo.s	loc_2922
+		blo.s	LevSel_Refresh2
 		moveq	#0,d0
 
-loc_2922:
+LevSel_Refresh2:
 		move.w	d0,(v_levselsound).w
 		bsr.w	LevSelTextLoad
 
-locret_292A:
+LevSel_NoMove:
 		rts
 ; ---------------------------------------------------------------------------
 
@@ -1886,11 +1927,12 @@ textpos:	= ($40000000+(($E210&$3FFF)<<16)+(($E210&$C000)>>14))
 		move.w	#$E680,d3
 		moveq	#20-1,d1	; Only load 20 lines.
 
-loc_2944:
+LevSel_DrawAll:
 		move.l	d4,4(a6)
-		bsr.w	sub_29CC
+		bsr.w	LevSel_ChgLine
 		addi.l	#$800000,d4
-		dbf	d1,loc_2944
+		dbf	d1,LevSel_DrawAll
+
 		moveq	#0,d0
 		move.w	(v_levselitem).w,d0
 		move.w	d0,d1
@@ -1906,52 +1948,52 @@ loc_2944:
 		adda.w	d1,a1
 		move.w	#$C680,d3
 		move.l	d4,4(a6)
-		bsr.w	sub_29CC
+		bsr.w	LevSel_ChgLine
 		move.w	#$E680,d3
 		cmpi.w	#$13,(v_levselitem).w	; are we on Sound Select?
-		bne.s	loc_2996	; if not, branch
+		bne.s	LevSel_DrawSnd	; if not, branch
 		move.w	#$C680,d3
 
-loc_2996:
+LevSel_DrawSnd:
 		locVRAM vram_bg+$BB0
 		move.w	(v_levselsound).w,d0
 		addi.w	#$80,d0
 		move.b	d0,d2
 		lsr.b	#4,d0
-		bsr.w	sub_29B8
+		bsr.w	LevSel_ChgSnd
 		move.b	d2,d0
-		bsr.w	sub_29B8
+		bsr.w	LevSel_ChgSnd
 		rts
 ; ---------------------------------------------------------------------------
 
-sub_29B8:
+LevSel_ChgSnd:
 		andi.w	#$F,d0
 		cmpi.b	#$A,d0
-		blo.s	loc_29C6
+		blo.s	LevSel_Numb
 		addi.b	#7,d0
 
-loc_29C6:
+LevSel_Numb:
 		add.w	d3,d0
 		move.w	d0,(a6)
 		rts
 ; ---------------------------------------------------------------------------
 
-sub_29CC:
+LevSel_ChgLine:
 		moveq	#24-1,d2
 
-loc_29CE:
+LevSel_LineLoop:
 		moveq	#0,d0
 		move.b	(a1)+,d0
-		bpl.s	loc_29DE
+		bpl.s	LevSel_CharOk
 		move.w	#0,(a6)
-		dbf	d2,loc_29CE
+		dbf	d2,LevSel_LineLoop
 		rts
 ; ---------------------------------------------------------------------------
 
-loc_29DE:
+LevSel_CharOk:
 		add.w	d3,d0
 		move.w	d0,(a6)
-		dbf	d2,loc_29CE
+		dbf	d2,LevSel_LineLoop
 		rts
 ; ---------------------------------------------------------------------------
 
@@ -2130,7 +2172,7 @@ loc_2D54:
 		move.b	#id_VInt_08,(v_vint_routine).w
 		bsr.w	WaitForVInt
 		move.w	#$202F,(v_pfade_start).w
-		bsr.w	PaletteWhiteIn_Sub
+		bsr.w	PalFadeIn_Alt
 		addq.b	#2,(v_objslot2+obRoutine).w
 		addq.b	#4,(v_objslot3+obRoutine).w
 		addq.b	#4,(v_objslot4+obRoutine).w
@@ -4285,7 +4327,7 @@ Map_Smash:	include "_maps/Smashable Walls.asm"
 
 		include "obj/3D Boss - Green Hill (part 1).asm"
 
-sub_B146:
+BossDefeated:
 		move.b	(v_vint_byte).w,d0
 		andi.b	#7,d0
 		bne.s	locret_B186
@@ -4374,7 +4416,7 @@ Map_Light:	include "_maps/Light.asm"
 Map_Bump:	include "_maps/Bumper.asm"
 
 		include "obj/0D Signpost.asm"
-Ani_Sign:	include "_anim/Signpost.asm"
+		include "_anim/Signpost.asm"
 Map_Sign:	include "_maps/Signpost.asm"
 
 		include "obj/4C & 4D Lava Geyser Maker.asm"
@@ -4460,7 +4502,7 @@ Map_Seesaw:	include "_maps/Seesaw.asm"
 		include "obj/4A Giant Ring.asm"
 
 		include "_anim/Shield.asm"
-		include "_maps/Shield.asm"
+Map_Shield:	include "_maps/Shield.asm"
 
 		include "_anim/Special Stage Entry (Unused).asm"
 Map_Vanish:	include "_maps/Special Stage Entry (Unused).asm"
@@ -5258,7 +5300,7 @@ loc_10B7A:
 
 		lea	(v_sslayout).l,a1
 		lea	(SS_1).l,a0
-		moveq	#$24-1,d1
+		moveq	#bytesToXcnt(SS_1_End-SS_1,$24),d1
 
 loc_10B8E:
 		moveq	#bytesToLcnt($24),d2
@@ -5305,7 +5347,7 @@ Map_SS_Goal_R:	include	"_maps/SS DOWN Block.asm"
 ;sub_10C98:
 		lea	(v_ssblockbuffer).l,a1
 		lea	(SS_1).l,a0
-		moveq	#$40-1,d1
+		moveq	#bytesToXcnt($1000,$40),d1
 
 loc_10CA6:
 		moveq	#bytesToLcnt($40),d2
@@ -5349,8 +5391,8 @@ locret_11678:
 
 		include	"_include/HUD_Update.asm"
 
-byte_11A26:	binclude "artunc/HUD Numbers.bin"
-byte_11D26:	binclude "artunc/Lives Counter Numbers.bin"
+Art_Hud:	binclude "artunc/HUD Numbers.bin"
+Art_LivesNums:	binclude "artunc/Lives Counter Numbers.bin"
 
 		include "obj/DebugMode.asm"
 		include "_include/DebugList.asm"
@@ -5479,7 +5521,7 @@ Nem_Crabmeat:	binclude "artnem/Enemy Crabmeat.nem"
 Nem_Buzz:	binclude "artnem/Enemy Buzz Bomber.nem"
 		even
 ;Nem_Ball_Explosion:
-		binclude "artnem/Unused - Ball Hog's Bomb Explosion.nem"
+		binclude "artnem/Unused - Ball Hog's Ball Explosion.nem"
 		even
 Nem_Burrobot:	binclude "artnem/Enemy Burrobot.nem"
 		even
@@ -5487,8 +5529,8 @@ Nem_Chopper:	binclude "artnem/Enemy Chopper.nem"
 		even
 Nem_Jaws:	binclude "artnem/Enemy Jaws.nem"
 		even
-;Nem_BallBomb:
-		binclude "artnem/Unused - Ball Hog's Bomb.nem"
+;Nem_BallHog_Ball:
+		binclude "artnem/Unused - Ball Hog's Ball.nem"
 		even
 Nem_Roller:	binclude "artnem/Enemy Roller.nem"
 		even

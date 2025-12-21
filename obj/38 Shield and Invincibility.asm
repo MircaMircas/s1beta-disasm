@@ -12,7 +12,7 @@ ObjShield_Index:dc.w ObjShield_Init-ObjShield_Index, ObjShield_Shield-ObjShield_
 
 ObjShield_Init:
 		addq.b	#2,obRoutine(a0)
-		move.l	#MapShield,obMap(a0)
+		move.l	#Map_Shield,obMap(a0)
 		move.b	#4,obRender(a0)
 		move.b	#1,obPriority(a0)
 		move.b	#$10,obActWid(a0)
@@ -36,7 +36,7 @@ ObjShield_Shield:
 		move.w	(v_player+obX).w,obX(a0)
 		move.w	(v_player+obY).w,obY(a0)
 		move.b	(v_player+obStatus).w,obStatus(a0)
-		lea	(AniShield).l,a1
+		lea	(Ani_Shield).l,a1
 		jsr	(AnimateSprite).l
 		bsr.w	DisplaySprite
 
@@ -90,7 +90,7 @@ ObjShield_StarTrail2a:
 		move.w	(a1)+,obX(a0)
 		move.w	(a1)+,obY(a0)
 		move.b	(v_player+obStatus).w,obStatus(a0)
-		lea	(AniShield).l,a1
+		lea	(Ani_Shield).l,a1
 		jsr	(AnimateSprite).l
 		bra.w	DisplaySprite
 ; ---------------------------------------------------------------------------
