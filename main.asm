@@ -5442,8 +5442,7 @@ Nem_Stars:	binclude "artnem/Stars.nem"
 		even
 Nem_Flash:	binclude "artnem/Flash.nem"
 		even
-;Nem_Goggles:
-		binclude "artnem/Unused - Goggles.nem"
+Nem_Goggles:	binclude "artnem/Unused - Goggles.nem"
 		even
 
 		align	$400
