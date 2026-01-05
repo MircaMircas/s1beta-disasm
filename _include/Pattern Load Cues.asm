@@ -77,7 +77,7 @@ PLC_GHZ:	dc.w ((PLC_GHZ2-PLC_GHZ-2)/6)-1
 		plcm    Nem_GHZ_2nd, ArtTile_Level+$1CD
 		plcm    Nem_Stalk, ArtTile_GHZ_Flower_Stalk
 		plcm    Nem_PplRock, ArtTile_GHZ_Purple_Rock
-		plcm    Nem_Crabmeat, ArtTile_Crabmeat
+		plcm    Nem_BallHog, ArtTile_BallHog
 		plcm    Nem_Buzz, ArtTile_Buzz_Bomber
 		plcm    Nem_Chopper, ArtTile_Chopper
 		plcm    Nem_Newtron, ArtTile_Newtron
